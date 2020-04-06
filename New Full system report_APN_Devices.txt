@@ -1,0 +1,68 @@
+CREATE FUNCTION ConvertPdSerNum 
+(
+       -- Add the parameters for the function here
+       @serIn bigint
+)
+RETURNS bigint
+AS
+BEGIN
+       -- Declare variables here
+       DECLARE @result1 bigint
+       DECLARE @result2 bigint
+       DECLARE @result3 bigint
+
+       -- Add the T-SQL statements to compute the return value here
+       SET @result1 = @serIn & 0xFFFFFF 
+       SET @result2 = @serIn / 0x1000000
+       SET @result3 = @result1 + (@result2 * 10000000)
+       -- Return the result of the function
+       RETURN @result3
+
+END
+GO
+
+SELECT dbo.ConvertPdSerNum(185620603)
+
+
+
+
+
+
+
+SELECT DISTINCT
+	   [BedNumber]
+	  ,[OverrideBedNumber]
+	  ,[ROOMNAME]
+	  ,[OVERRIDEROOMNAME]
+	  ,[PDSERIALNUMBER]=[DukaneESMMessages].[dbo].[DV1PeripheralDevice].[PDSerialNum]
+	  ,[ConvertedPDSerialNumber] = CASE LEFT([dbo].[DV1PeripheralDevice].[PDSerialNum],2) WHEN 11 THEN 'G' + CONVERT(varchar,RIGHT(dbo.ConvertPdSerNum([DukaneESMMessages].[dbo].[DV1PeripheralDevice].[PDSerialNum]),7)) ELSE CONVERT(varchar,dbo.ConvertPdSerNum([DukaneESMMessages].[dbo].[DV1PeripheralDevice].[PDSerialNum])) END
+	  ,[ARCHITECTNAME]=[DukaneESMMessages].[dbo].[DV1PeripheralDevice].[ArchitectName]
+	  ,[DUTYAREANAME]
+	  ,[NURSINGUNITNAME]
+	  ,[SYSTEMNAME]
+	  ,[IPDevice_Type]=DukaneESMMessages.dbo.DV1IPDeviceTypeConst.DisplayName
+	  ,[IPDevice]=DukaneESMMessages.dbo.DV1IPDevice.ArchitectName
+	  ,CONVERT(VARBINARY(8), [MACAddress]) as 'IPDevice MAC Address'
+	  ,CONVERT(varchar,ipaddress/(256*256*256))+'.'+
+	   CONVERT(varchar,ipaddress%(256*256*256)/(256*256))+'.'+
+	   CONVERT(varchar,ipaddress%(256*256)/256)+'.'+
+	   CONVERT(varchar,ipaddress%256) as IP_ADDRESS
+	  
+	INTO [dbo].SystemReport  
+	FROM [DukaneESMMessages].[DBO].[DCS1Beds]
+	FULL OUTER JOIN [DukaneESMMessages].[DBO].[DCS1Room] ON DukaneESMMessages.dbo.DCS1Room.RoomID=DukaneESMMessages.dbo.DCS1Beds.RoomID
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DCS1DutyArea]	ON [DukaneESMMessages].[dbo].[DCS1DutyArea].[DutyAreaID]=[DukaneESMMessages].[dbo].[DCS1Room].[DutyAreaID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DCS1NursingUnits]	ON [DukaneESMMessages].[dbo].[DCS1NursingUnits].[NursingUnitID]=[DukaneESMMessages].[dbo].[DCS1DutyArea].[NursingUnitID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DCS1Systems] ON [DukaneESMMessages].[dbo].[DCS1Systems].[SystemID]=[DukaneESMMessages].[dbo].[DCS1NursingUnits].[SystemID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DV1VirtualStation] ON [DukaneESMMessages].[dbo].[DCS1Room].[RoomID]=[DukaneESMMessages].[dbo].[DV1VirtualStation].[RoomID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DV1PeripheralDevice] ON [DukaneESMMessages].[dbo].[DV1PeripheralDevice].[VStationID]= [DukaneESMMessages].[dbo].[DV1VirtualStation].[VStationID]
+	INNER JOIN DukaneESMMessages.dbo.DV1IPDevice ON DukaneESMMessages.dbo.DV1IPDevice.IPDeviceID=DukaneESMMessages.dbo.DV1VirtualStation.IPDeviceID
+	FULL OUTER JOIN [DukaneESMMessages].dbo.DV1PDTypeConst ON [DukaneESMMessages].dbo.DV1PDTypeConst.PDType = [DukaneESMMessages].[dbo].[DV1PeripheralDevice].PDType
+
+
+	
+	ORDER BY IP_ADDRESS ASC
+
+
+ALTER TABLE SystemReport
+DROP COLUMN PDSERIALNUMBER
