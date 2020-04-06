@@ -1,0 +1,81 @@
+/*CREATE FUNCTION ConvertPdSerNum 
+(
+       -- Add the parameters for the function here
+       @serIn bigint
+)
+RETURNS bigint
+AS
+BEGIN
+       -- Declare variables here
+       DECLARE @result1 bigint
+       DECLARE @result2 bigint
+       DECLARE @result3 bigint
+
+       -- Add the T-SQL statements to compute the return value here
+       SET @result1 = @serIn & 0xFFFFFF 
+       SET @result2 = @serIn / 0x1000000
+       SET @result3 = @result1 + (@result2 * 10000000)
+       -- Return the result of the function
+       RETURN @result3
+
+END
+GO*/
+
+/*create function HexToAscii(@hex varchar(max))
+returns varchar(max)
+as
+begin
+       declare @result varchar(max) = '', @i int = 1, @c int
+       while @i < len(@hex) begin
+              set @c = (charindex(substring(@hex,@i,1), '0123456789abcdef') - 1) * 16 + charindex(substring(@hex,@i+1,1), '0123456789abcdef') - 1
+              set @result = @result + char(@c)
+              set @i = @i + 2
+       end
+       return @result
+end
+GO*/
+
+
+
+SELECT DISTINCT
+	   [ConvertedPDSerialNumber] = CASE LEFT([dbo].[DV1PeripheralDevice].[PDSerialNum],2) WHEN 11 THEN ('G' + CONVERT(varchar,RIGHT(dbo.ConvertPdSerNum([DukaneESMMessages].[dbo].[DV1PeripheralDevice].[PDSerialNum]),7))) WHEN 12 THEN ('M' + CONVERT(varchar,RIGHT(dbo.ConvertPdSerNum([DukaneESMMessages].[dbo].[DV1PeripheralDevice].[PDSerialNum]),4))) ELSE CONVERT(varchar,dbo.ConvertPdSerNum([DukaneESMMessages].[dbo].[DV1PeripheralDevice].[PDSerialNum])) END
+	  ,[ARCHITECTNAME]=[DukaneESMMessages].[dbo].[DV1PeripheralDevice].[ArchitectName]
+	  ,[HWVersion] = CASE  
+         WHEN PDType > 16900000 THEN -- I think this will cover APN devices
+         dbo.HexToAscii(SUBSTRING(CONVERT(char(8), cast( HwVersion AS VARBINARY), 2),5,2) ) + '.' +
+         dbo.HexToAscii(SUBSTRING(CONVERT(char(8), cast( HwVersion AS VARBINARY), 2),7,2))
+         ELSE
+         (SUBSTRING(CONVERT(char(8), cast( HwVersion AS VARBINARY), 2),8,1)) + '.' +
+         (SUBSTRING(CONVERT(char(8), cast( HwVersion AS VARBINARY), 2),6,1) ) + '.' +
+         (SUBSTRING(CONVERT(char(8), cast( HwVersion AS VARBINARY), 2),4,1)) + '.' +
+         dbo.HexToAscii(SUBSTRING(CONVERT(char(8), CONVERT(BINARY(4), HwVersion), 2),1,2))
+         END
+	  ,[IPDevice_HardwareVersion] = CONVERT(VARCHAR(1000),CONVERT(VARBINARY(3),HardwareVersion), 2) + '-' + CONVERT(VARCHAR(1000),CONVERT(VARBINARY(3),HWMinorVersion), 2)
+	  ,[SYSTEMNAME]
+	  ,[IPDevice_Type]=DV1IPDeviceTypeConst.DisplayName
+	  ,[IPDevice]=[DukaneESMMessages].dbo.DV1IPDevice.ArchitectName
+	  ,[IPDevice_MAC_ADDRESS] = SUBSTRING(CONVERT(VARCHAR(1000),CONVERT(VARBINARY(8), [MACAddress]),2),5,2) + '-' +
+			SUBSTRING(CONVERT(VARCHAR(1000),CONVERT(VARBINARY(8), [MACAddress]),2),7,2) + '-' +
+			SUBSTRING(CONVERT(VARCHAR(1000),CONVERT(VARBINARY(8), [MACAddress]),2),9,2) + '-' +
+			SUBSTRING(CONVERT(VARCHAR(1000),CONVERT(VARBINARY(8), [MACAddress]),2),11,2) + '-' +
+			SUBSTRING(CONVERT(VARCHAR(1000),CONVERT(VARBINARY(8), [MACAddress]),2),13,2) + '-' +
+			SUBSTRING(CONVERT(VARCHAR(1000),CONVERT(VARBINARY(8), [MACAddress]),2),15,2)
+	  ,CONVERT(varchar,ipaddress/(256*256*256))+'.'+
+	   CONVERT(varchar,ipaddress%(256*256*256)/(256*256))+'.'+
+	   CONVERT(varchar,ipaddress%(256*256)/256)+'.'+
+	   CONVERT(varchar,ipaddress%256) as IP_ADDRESS
+	  
+	--INTO [dbo].SystemReport  
+	FROM [DukaneESMMessages].[DBO].[DCS1Beds]
+	FULL OUTER JOIN [DukaneESMMessages].[DBO].[DCS1Room] ON [DukaneESMMessages].dbo.DCS1Room.RoomID=[DukaneESMMessages].dbo.DCS1Beds.RoomID
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DCS1DutyArea]	ON [DukaneESMMessages].[dbo].[DCS1DutyArea].[DutyAreaID]=[DukaneESMMessages].[dbo].[DCS1Room].[DutyAreaID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DCS1NursingUnits]	ON [DukaneESMMessages].[dbo].[DCS1NursingUnits].[NursingUnitID]=[DukaneESMMessages].[dbo].[DCS1DutyArea].[NursingUnitID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DCS1Systems] ON [DukaneESMMessages].[dbo].[DCS1Systems].[SystemID]=[DukaneESMMessages].[dbo].[DCS1NursingUnits].[SystemID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DV1VirtualStation] ON [DukaneESMMessages].[dbo].[DCS1Room].[RoomID]=[DukaneESMMessages].[dbo].[DV1VirtualStation].[RoomID]
+	FULL OUTER JOIN [DukaneESMMessages].[dbo].[DV1PeripheralDevice] ON [DukaneESMMessages].[dbo].[DV1PeripheralDevice].[VStationID] = [DukaneESMMessages].[dbo].[DV1VirtualStation].[VStationID]
+	INNER JOIN [DukaneESMMessages].dbo.DV1IPDevice ON [DukaneESMMessages].dbo.DV1IPDevice.IPDeviceID=[DukaneESMMessages].dbo.DV1VirtualStation.IPDeviceID
+	FULL OUTER JOIN DV1IPDeviceTypeConst ON DV1IPDevice.IPDeviceType = DV1IPDeviceTypeConst.IPDeviceType
+
+	WHERE SYSTEMNAME IS NOT NULL
+
+	ORDER BY IP_ADDRESS ASC
